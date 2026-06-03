@@ -1,6 +1,23 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
+class TranscriptEntry(BaseModel):
+    """Single timestamped segment from a transcript."""
+    text: str
+    start: float        # seconds from video start
+    duration: float     # seconds
+
+
+class TranscriptResult(BaseModel):
+    """
+    Structured return type from TranscriptService.get_transcript().
+    Used by EmbeddingService to create time-aware chunks.
+    """
+    text: str                           # full joined transcript
+    entries: List[TranscriptEntry]      # timestamped segments
+    source: str                         # 'youtube_transcript_api' | 'whisper-1'
+    raw_video_id: Optional[str] = None  # original video ID for reference
+
 
 class VideoIngestRequest(BaseModel):
     youtube_url: str
