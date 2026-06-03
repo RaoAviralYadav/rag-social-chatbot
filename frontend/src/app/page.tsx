@@ -9,12 +9,13 @@ export default function Home() {
   const [videoA, setVideoA] = useState<VideoMetadata | null>(null);
   const [videoB, setVideoB] = useState<VideoMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  // Stable session ID for the lifetime of this page load
+  const [statusMessage, setStatusMessage] = useState<string | null>(null); // ← ADD
   const [sessionId] = useState(() => crypto.randomUUID());
 
   const handleIngest = (data: IngestResponse) => {
     setVideoA(data.video_a);
     setVideoB(data.video_b);
+    setStatusMessage(`[${data.status.toUpperCase()}] ${data.message}`); // ← ADD
   };
 
   return (
@@ -28,6 +29,19 @@ export default function Home() {
         isLoading={isLoading}
         setIsLoading={setIsLoading}
       />
+
+      {statusMessage && (
+        <p style={{
+          padding: "10px 14px",
+          borderRadius: 7,
+          background: "#1a1a1a",
+          border: "1px solid #2a2a2a",
+          color: "#facc15",
+          fontSize: "0.85rem",
+        }}>
+          {statusMessage}
+        </p>
+      )}
 
       <section className="video-grid">
         <VideoCard video={videoA} label="A" />
