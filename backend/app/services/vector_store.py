@@ -40,6 +40,7 @@ class VectorStore:
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},   # cosine similarity for OpenAI embeddings
+            embedding_function=None,
         )
         logger.info(
             "ChromaDB ready at %s | collection=%s | docs=%d",
