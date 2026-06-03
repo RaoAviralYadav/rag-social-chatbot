@@ -54,15 +54,13 @@ class TranscriptService:
 
     def _fetch_youtube_entries_sync(self, video_id: str) -> List[Dict]:
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            api = YouTubeTranscriptApi()                    # now instantiated
+            transcript_list = api.list(video_id)            # was list_transcripts()
         except TranscriptsDisabled:
             raise ValueError(f"Transcripts disabled for video: {video_id}")
         except VideoUnavailable:
             raise ValueError(f"Video unavailable: {video_id}")
 
-        # Build priority list — manual EN → auto EN → everything else
-        # Skip translation entirely: avoids a second YouTube API call (rate limits)
-        # The LLM handles non-English text fine
         candidates = []
         try:
             candidates.append(
@@ -78,14 +76,12 @@ class TranscriptService:
         except NoTranscriptFound:
             pass
 
-        # Append all remaining transcripts as raw fallbacks (no translation call)
         seen_langs = {t.language_code for t in candidates}
         for t in transcript_list:
             if t.language_code not in seen_langs:
                 candidates.append(t)
                 seen_langs.add(t.language_code)
 
-        # Try each candidate; skip silently on ParseError or HTTP errors
         for transcript in candidates:
             try:
                 entries = transcript.fetch()
@@ -96,16 +92,12 @@ class TranscriptService:
                     )
                     return entries
             except Exception as e:
-                logger.warning(
-                    "Transcript [%s] failed for %s: %s — trying next",
-                    transcript.language_code, video_id, e
-                )
+                logger.warning("Transcript [%s] failed for %s: %s — trying next",
+                            transcript.language_code, video_id, e)
                 continue
 
-        # All sources exhausted — return stub so ingestion doesn't crash
         logger.error("No usable transcript found for %s", video_id)
         return []
-    
 
     async def get_youtube_transcript(self, url: str) -> Dict[str, Any]:
         video_id = self._parse_youtube_id(url)
