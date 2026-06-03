@@ -6,7 +6,7 @@ export async function healthCheck() {
 }
 
 export async function ingestVideos(youtubeUrl: string, instagramUrl: string) {
-  const res = await fetch(`${API_BASE}/api/ingest`, {
+  const res = await fetch(`${API_BASE}/api/ingest/`, {   
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ youtube_url: youtubeUrl, instagram_url: instagramUrl }),
@@ -20,8 +20,7 @@ export async function sendChatMessage(
   sessionId: string,
   history: { role: string; content: string }[]
 ) {
-  // TODO: switch this to /stream endpoint with SSE reader
-  const res = await fetch(`${API_BASE}/api/chat`, {
+  const res = await fetch(`${API_BASE}/api/chat/`, {     
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, session_id: sessionId, history }),
@@ -36,7 +35,5 @@ export async function* streamChatMessage(
   history: { role: string; content: string }[]
 ): AsyncGenerator<string> {
   // TODO: implement SSE streaming reader
-  // const res = await fetch(`${API_BASE}/api/chat/stream`, { method: "POST", ... })
-  // const reader = res.body?.getReader()
   yield "Streaming not yet implemented";
 }
