@@ -14,7 +14,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/", response_model=IngestResponse)
+@router.post("", response_model=IngestResponse)
 async def ingest_videos(request: VideoIngestRequest):
     """
     Full ingestion pipeline:
@@ -85,7 +85,7 @@ async def ingest_videos(request: VideoIngestRequest):
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
 
-@router.delete("/")
+@router.delete("") 
 async def reset_ingestion():
     """Clear all vectors — useful for a fresh demo run."""
     await vector_store.clear()
