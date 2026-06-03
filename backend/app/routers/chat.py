@@ -7,7 +7,7 @@ from app.services.rag_service import rag_service
 router = APIRouter()
 
 
-@router.post("/", response_model=ChatResponse)
+@router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     result = await rag_service.query(
         message=request.message,
