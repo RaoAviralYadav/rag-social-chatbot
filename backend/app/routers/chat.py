@@ -2,32 +2,32 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ChatRequest, ChatResponse
+from app.services.rag_service import rag_service
 
 router = APIRouter()
 
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """
-    Single-turn RAG query. Returns answer + source citations.
-    TODO: wire up rag_service.query()
-    """
-    # STUB
-    return ChatResponse(
-        answer="RAG pipeline not yet implemented.",
-        sources=[],
+    result = await rag_service.query(
+        message=request.message,
         session_id=request.session_id,
+        history=request.history,
     )
+    return ChatResponse(**result)
 
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
-    """
-    Streaming RAG query via Server-Sent Events.
-    TODO: wire up rag_service.stream_query()
-    """
-    # STUB
-    async def generate():
-        yield "data: Streaming not yet implemented.\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        rag_service.stream_query(
+            message=request.message,
+            session_id=request.session_id,
+            history=request.history,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disables Nginx response buffering
+        },
+    )
