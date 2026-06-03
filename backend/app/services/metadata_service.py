@@ -101,26 +101,20 @@ class MetadataService:
     # ------------------------------------------------------------------ #
 
     async def get_metadata(self, url: str, video_id: str) -> VideoMetadata:
-        """
-        Fetch metadata for any supported URL.
-        video_id is the logical label ('A' or 'B'), not the platform's ID.
-        """
         platform = self.detect_platform(url)
         loop = asyncio.get_event_loop()
 
-        logger.info("Fetching metadata for Video %s (%s)", video_id, platform)
-        info = await loop.run_in_executor(None, self._extract_info_sync, url)
-
-        metadata = self._build_metadata(info, video_id, platform)
-
-        logger.info(
-            "Video %s | creator=%s | views=%s | engagement=%.2f%%",
-            video_id,
-            metadata.creator,
-            metadata.views,
-            metadata.engagement_rate or 0,
+        try:
+            info = await loop.run_in_executor(None, self._extract_info_sync, url)
+            return self._build_metadata(info, video_id, platform)
+        except Exception as e:
+            logger.warning("Metadata fetch failed for Video %s: %s — using stub", video_id, e)
+            return VideoMetadata(
+                video_id=video_id,
+                url=url,
+                platform=platform,
+                creator="Unknown (metadata unavailable)",
         )
-        return metadata
 
 
 metadata_service = MetadataService()
