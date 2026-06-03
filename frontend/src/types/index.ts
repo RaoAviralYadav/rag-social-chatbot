@@ -31,6 +31,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceChunk[];
+  isStreaming?: boolean;
 }
 
 export interface ChatRequest {
