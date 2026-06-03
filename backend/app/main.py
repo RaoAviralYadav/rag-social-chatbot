@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import ingest, chat
 
-app = FastAPI(title="RAG Social Chatbot", version="0.1.0")
+app = FastAPI(title="RAG Social Chatbot", version="0.1.0", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
