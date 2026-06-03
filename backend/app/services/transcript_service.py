@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 from typing import Any, Dict, List
+from xml.etree.ElementTree import ParseError
 
 import yt_dlp
 from openai import AsyncOpenAI
@@ -52,39 +53,40 @@ class TranscriptService:
         return match.group(1)
 
     def _fetch_youtube_entries_sync(self, video_id: str) -> List[Dict]:
-        """
-        Synchronous transcript fetch — runs in executor.
-        Priority: manual EN → auto-generated EN → any language (translated to EN).
-        """
         try:
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         except TranscriptsDisabled:
-            raise ValueError(f"Transcripts are disabled for video: {video_id}")
+            raise ValueError(f"Transcripts disabled for video: {video_id}")
         except VideoUnavailable:
-            raise ValueError(f"Video is unavailable: {video_id}")
-
+            raise ValueError(f"Video unavailable: {video_id}")
         try:
             transcript = transcript_list.find_manually_created_transcript(
-                ["en", "en-US", "en-GB"]
-            )
-            logger.info("Using manual EN transcript for %s", video_id)
+            ["en", "en-US", "en-GB"]
+        )
         except NoTranscriptFound:
             try:
                 transcript = transcript_list.find_generated_transcript(
-                    ["en", "en-US", "en-GB"]
-                )
-                logger.info("Using auto-generated EN transcript for %s", video_id)
+                ["en", "en-US", "en-GB"]
+            )
             except NoTranscriptFound:
-                # Last resort: translate whatever language is available
                 transcript = next(iter(transcript_list))
-                logger.warning(
-                    "No EN transcript for %s — translating from [%s]",
-                    video_id,
-                    transcript.language_code,
+                if not transcript.language_code.startswith("en"):
+                    logger.warning(
+                        "No EN transcript for %s; translating from [%s]",
+                        video_id, transcript.language_code,
                 )
-                transcript = transcript.translate("en")
+                try:
+                    transcript = transcript.translate("en")
+                except Exception:
+                    pass  # fall through to fetch original below
 
-        return transcript.fetch()
+        try:
+            return transcript.fetch()
+        except ParseError:
+        # Translated XML came back empty — fetch original language as fallback
+            logger.warning("Translated transcript empty for %s, falling back to original", video_id)
+            fallback = next(iter(transcript_list))
+            return fallback.fetch()
 
     async def get_youtube_transcript(self, url: str) -> Dict[str, Any]:
         video_id = self._parse_youtube_id(url)
