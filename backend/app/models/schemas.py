@@ -26,7 +26,7 @@ class VideoIngestRequest(BaseModel):
 
 class VideoMetadata(BaseModel):
     video_id: str           # "A" or "B"
-    url: str
+    url: str = "" 
     platform: str           # "youtube" | "instagram"
     creator: str
     follower_count: Optional[int] = None
