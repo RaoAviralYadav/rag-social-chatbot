@@ -3,17 +3,26 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    # API Keys
+    # ── OpenAI  ──────────────────
     openai_api_key: str = ""
 
-    # Vector DB
+    # ── Free LLM providers ───────────────────────────────────────────────
+    groq_api_key: str = ""          
+    gemini_api_key: str = ""        
+    huggingface_api_key: str = ""   
+
+    # ── Vector DB ────────────────────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"
 
-    # LLM / Embeddings
-    llm_model: str = "gpt-4o-mini"
-    embedding_model: str = "text-embedding-3-small"
+    # ── LLM model names  ────────────────────
+    groq_model: str = "llama-3.1-8b-instant"
+    gemini_model: str = "gemini-1.5-flash"
+    huggingface_model: str = "HuggingFaceH4/zephyr-7b-beta"
 
-    # App
+    # ── Embedding — local HuggingFace  ────────────────
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # ── App ───────────────────────────────────────────────────────────────
     cors_origins: List[str] = ["http://localhost:3000"]
 
     class Config:
