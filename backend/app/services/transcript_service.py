@@ -59,50 +59,71 @@ class TranscriptService:
             raise ValueError(f"Transcripts disabled for video: {video_id}")
         except VideoUnavailable:
             raise ValueError(f"Video unavailable: {video_id}")
+
+        # Build priority list — manual EN → auto EN → everything else
+        # Skip translation entirely: avoids a second YouTube API call (rate limits)
+        # The LLM handles non-English text fine
+        candidates = []
         try:
-            transcript = transcript_list.find_manually_created_transcript(
-            ["en", "en-US", "en-GB"]
-        )
-        except NoTranscriptFound:
-            try:
-                transcript = transcript_list.find_generated_transcript(
-                ["en", "en-US", "en-GB"]
+            candidates.append(
+                transcript_list.find_manually_created_transcript(["en", "en-US", "en-GB"])
             )
-            except NoTranscriptFound:
-                transcript = next(iter(transcript_list))
-                if not transcript.language_code.startswith("en"):
-                    logger.warning(
-                        "No EN transcript for %s; translating from [%s]",
-                        video_id, transcript.language_code,
-                )
-                try:
-                    transcript = transcript.translate("en")
-                except Exception:
-                    pass  # fall through to fetch original below
+        except NoTranscriptFound:
+            pass
 
         try:
-            return transcript.fetch()
-        except ParseError:
-        # Translated XML came back empty — fetch original language as fallback
-            logger.warning("Translated transcript empty for %s, falling back to original", video_id)
-            fallback = next(iter(transcript_list))
-            return fallback.fetch()
+            candidates.append(
+                transcript_list.find_generated_transcript(["en", "en-US", "en-GB"])
+            )
+        except NoTranscriptFound:
+            pass
+
+        # Append all remaining transcripts as raw fallbacks (no translation call)
+        seen_langs = {t.language_code for t in candidates}
+        for t in transcript_list:
+            if t.language_code not in seen_langs:
+                candidates.append(t)
+                seen_langs.add(t.language_code)
+
+        # Try each candidate; skip silently on ParseError or HTTP errors
+        for transcript in candidates:
+            try:
+                entries = transcript.fetch()
+                if entries:
+                    logger.info(
+                        "Transcript OK for %s [lang=%s, auto=%s]",
+                        video_id, transcript.language_code, transcript.is_generated
+                    )
+                    return entries
+            except Exception as e:
+                logger.warning(
+                    "Transcript [%s] failed for %s: %s — trying next",
+                    transcript.language_code, video_id, e
+                )
+                continue
+
+        # All sources exhausted — return stub so ingestion doesn't crash
+        logger.error("No usable transcript found for %s", video_id)
+        return []
+    
 
     async def get_youtube_transcript(self, url: str) -> Dict[str, Any]:
         video_id = self._parse_youtube_id(url)
         loop = asyncio.get_event_loop()
-
         entries = await loop.run_in_executor(
             None, self._fetch_youtube_entries_sync, video_id
         )
-
+        text = (
+            " ".join(e["text"] for e in entries)
+            if entries
+            else f"[Transcript unavailable for video {video_id}]"
+        )
         return {
-            "text": " ".join(e["text"] for e in entries),
-            "entries": entries,   # [{text: str, start: float, duration: float}]
+            "text": text,
+            "entries": entries,
             "source": "youtube_transcript_api",
             "raw_video_id": video_id,
         }
-
     # ------------------------------------------------------------------ #
     # Instagram                                                            #
     # ------------------------------------------------------------------ #
