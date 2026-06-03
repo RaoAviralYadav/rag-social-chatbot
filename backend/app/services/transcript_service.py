@@ -90,7 +90,10 @@ class TranscriptService:
                         "Transcript OK for %s [lang=%s, auto=%s]",
                         video_id, transcript.language_code, transcript.is_generated
                     )
-                    return entries
+                    return [
+                        {"text": e.text, "start": e.start, "duration": e.duration}
+                        for e in entries
+                    ]
             except Exception as e:
                 logger.warning("Transcript [%s] failed for %s: %s — trying next",
                             transcript.language_code, video_id, e)
@@ -105,8 +108,7 @@ class TranscriptService:
         entries = await loop.run_in_executor(
             None, self._fetch_youtube_entries_sync, video_id
         )
-        text = (
-            " ".join(e["text"] for e in entries)
+        text =( " ".join(e.text for e in entries)
             if entries
             else f"[Transcript unavailable for video {video_id}]"
         )
