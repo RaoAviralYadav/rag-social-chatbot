@@ -91,7 +91,9 @@ class TranscriptService:
                         video_id, transcript.language_code, transcript.is_generated
                     )
                     return [
-                        {"text": e.text, "start": e.start, "duration": e.duration}
+                        {"text": e["text"] if isinstance(e, dict) else e.text,
+                        "start": e["start"] if isinstance(e, dict) else e.start,
+                        "duration": e["duration"] if isinstance(e, dict) else e.duration}
                         for e in entries
                     ]
             except Exception as e:
@@ -108,10 +110,12 @@ class TranscriptService:
         entries = await loop.run_in_executor(
             None, self._fetch_youtube_entries_sync, video_id
         )
-        text =( " ".join(e.text for e in entries)
+        text = (
+            " ".join(e["text"] if isinstance(e, dict) else e.text for e in entries)
             if entries
             else f"[Transcript unavailable for video {video_id}]"
         )
+
         return {
             "text": text,
             "entries": entries,
