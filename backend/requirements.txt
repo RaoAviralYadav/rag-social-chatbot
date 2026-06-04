@@ -11,7 +11,7 @@ langchain-huggingface==0.1.2
 langsmith==0.1.147
 
 sentence-transformers==3.2.1
-torch==2.4.1
+torch==2.5.1
 
 chromadb>=0.6.0,<1.0.0
 
