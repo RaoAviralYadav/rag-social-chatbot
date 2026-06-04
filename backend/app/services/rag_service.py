@@ -15,11 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 def _build_llm_chain():
-    """
-    Build a fallback chain of free LLMs.
-    Order: Groq (fastest) → Gemini Flash → HuggingFace Zephyr
-    Each is only initialised if its API key is set in .env.
-    """
     candidates = []
 
     if settings.groq_api_key:
@@ -42,7 +37,7 @@ def _build_llm_chain():
                 google_api_key=settings.gemini_api_key,
                 temperature=0.3,
                 streaming=True,
-                convert_system_message_to_human=True,  # Gemini doesn't support SystemMessage natively
+                convert_system_message_to_human=True,
             )
             candidates.append(gemini_llm)
             logger.info("LLM chain: Gemini (%s) added", settings.gemini_model)
@@ -69,42 +64,32 @@ def _build_llm_chain():
             "Add at least one of GROQ_API_KEY, GEMINI_API_KEY, or HUGGINGFACE_API_KEY to your .env"
         )
 
-    # First candidate is primary; the rest are fallbacks
     primary = candidates[0]
     fallbacks = candidates[1:]
-
-    if fallbacks:
-        return primary.with_fallbacks(fallbacks)
-    return primary
+    return primary.with_fallbacks(fallbacks) if fallbacks else primary
 
 
 class RAGService:
-    """
-    LangChain RAG pipeline with free LLM fallback chain.
-
-    query flow:
-      user message
-        → embed query (local HuggingFace)
-        → similarity_search (ChromaDB)
-        → build system prompt (metadata block + context chunks)
-        → stream via Groq → Gemini → HuggingFace (auto-fallback on 429/errors)
-        → persist to session memory
-        → emit [SOURCES] + [DONE] SSE events
-    """
-
     HISTORY_WINDOW = 6
     TOP_K = 6
 
     def __init__(self):
         self._llm = _build_llm_chain()
-        # Local embeddings — same model as embedding_service, no API key needed
-        self._embeddings = HuggingFaceEmbeddings(
-            model_name=settings.embedding_model,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
+        self._embeddings = None
         self._sessions: Dict[str, List[ChatMessage]] = {}
         self._video_metadata: Dict[str, VideoMetadata] = {}
+
+    @property
+    def embeddings(self):
+        if self._embeddings is None:
+            logger.info("Loading embedding model: %s", settings.embedding_model)
+            self._embeddings = HuggingFaceEmbeddings(
+                model_name=settings.embedding_model,
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+            logger.info("Embedding model ready.")
+        return self._embeddings
 
     # ------------------------------------------------------------------ #
     # State setters                                                        #
@@ -198,8 +183,8 @@ RULES:
         session_id: str,
         history: List[ChatMessage],
     ) -> AsyncGenerator[str, None]:
-        # 1. Embed query locally
-        query_vector = self._embeddings.embed_query(message)
+        # 1. Embed query — uses lazy property
+        query_vector = self.embeddings.embed_query(message)
 
         # 2. Retrieve top-k chunks
         chunks = await vector_store.similarity_search(
@@ -215,7 +200,7 @@ RULES:
             HumanMessage(content=message),
         ]
 
-        # 4. Stream — fallback chain handles provider errors automatically
+        # 4. Stream with auto-fallback
         full_response: List[str] = []
         try:
             async for chunk_obj in self._llm.astream(lc_messages):
@@ -225,7 +210,7 @@ RULES:
                     yield f"data: {token}\n\n"
         except Exception as e:
             logger.error("All LLM providers failed during streaming: %s", e)
-            yield f"data: [ERROR] All AI providers are currently unavailable. Please try again later.\n\n"
+            yield "data: [ERROR] All AI providers are currently unavailable. Please try again later.\n\n"
             yield "data: [DONE]\n\n"
             return
 
@@ -251,7 +236,8 @@ RULES:
         session_id: str,
         history: List[ChatMessage],
     ) -> Dict:
-        query_vector = self._embeddings.embed_query(message)
+        # Uses lazy property
+        query_vector = self.embeddings.embed_query(message)
         chunks = await vector_store.similarity_search(
             query_embedding=query_vector, video_ids=["A", "B"], k=self.TOP_K
         )

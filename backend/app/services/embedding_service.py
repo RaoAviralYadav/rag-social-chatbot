@@ -11,37 +11,29 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
-    """
-    Chunk → embed pipeline.
-    Uses local HuggingFace sentence-transformers (free, runs on CPU, no API key needed).
-
-    Model: all-MiniLM-L6-v2
-      - 384-dim embeddings (vs OpenAI's 1536 — ChromaDB handles any dim)
-      - ~80MB download on first run, cached in ~/.cache/huggingface
-      - ~50ms per batch on CPU — fast enough for transcripts
-
-    Each output chunk:
-      { text, video_id, chunk_index, start_time, embedding }
-    """
-
     CHUNK_SIZE = 500
     CHUNK_OVERLAP = 50
-    EMBED_BATCH_SIZE = 64   # sentence-transformers handles batching internally too
 
     def __init__(self):
-        logger.info("Loading HuggingFace embedding model: %s", settings.embedding_model)
-        self._embeddings = HuggingFaceEmbeddings(
-            model_name=settings.embedding_model,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},  # cosine similarity ready
-        )
+        self._embeddings = None
         self._splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.CHUNK_SIZE,
             chunk_overlap=self.CHUNK_OVERLAP,
             separators=["\n\n", "\n", ". ", "? ", "! ", " ", ""],
             add_start_index=True,
         )
-        logger.info("Embedding model ready.")
+
+    @property
+    def embeddings(self):
+        if self._embeddings is None:
+            logger.info("Loading embedding model: %s", settings.embedding_model)
+            self._embeddings = HuggingFaceEmbeddings(
+                model_name=settings.embedding_model,
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+            logger.info("Embedding model ready.")
+        return self._embeddings
 
     # ------------------------------------------------------------------ #
     # Timestamp mapping                                                    #
@@ -70,9 +62,7 @@ class EmbeddingService:
     # Chunking                                                             #
     # ------------------------------------------------------------------ #
 
-    def chunk_transcript(
-        self, result: TranscriptResult, video_id: str
-    ) -> List[Dict[str, Any]]:
+    def chunk_transcript(self, result: TranscriptResult, video_id: str) -> List[Dict[str, Any]]:
         offset_map = self._build_offset_map(result.entries)
         docs = self._splitter.create_documents(
             [result.text],
@@ -91,22 +81,15 @@ class EmbeddingService:
         return chunks
 
     # ------------------------------------------------------------------ #
-    # Embedding (sync model wrapped — sentence-transformers is sync)      #
+    # Embedding                                                            #
     # ------------------------------------------------------------------ #
 
-    async def embed_chunks(
-        self, chunks: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        HuggingFaceEmbeddings.aembed_documents is available in langchain-huggingface.
-        Falls back gracefully to sync embed_documents if async not supported.
-        """
+    async def embed_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         texts = [c["text"] for c in chunks]
         try:
-            vectors = await self._embeddings.aembed_documents(texts)
+            vectors = await self.embeddings.aembed_documents(texts)
         except (NotImplementedError, AttributeError):
-            # sentence-transformers sync path
-            vectors = self._embeddings.embed_documents(texts)
+            vectors = self.embeddings.embed_documents(texts)
 
         for chunk, vector in zip(chunks, vectors):
             chunk["embedding"] = vector
@@ -118,9 +101,7 @@ class EmbeddingService:
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
-    async def process(
-        self, result: TranscriptResult, video_id: str
-    ) -> List[Dict[str, Any]]:
+    async def process(self, result: TranscriptResult, video_id: str) -> List[Dict[str, Any]]:
         chunks = self.chunk_transcript(result, video_id)
         return await self.embed_chunks(chunks)
 
